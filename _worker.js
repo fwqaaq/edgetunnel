@@ -156,7 +156,7 @@ async function vlessOverWSHandler(request) {
   )
 
   /** @type {{ value: import("@cloudflare/workers-types").Socket | null}}*/
-  let remoteSocketWapper = {
+  const remoteSocketWapper = {
     value: null
   }
   let isDns = false
@@ -165,7 +165,8 @@ async function vlessOverWSHandler(request) {
   readableWebSocketStream
     .pipeTo(
       new WritableStream({
-        async write(chunk, controller) {
+        start() {},
+        async write(chunk, _controller) {
           if (isDns) {
             return await handleDNSQuery(chunk, webSocket, null, log)
           }
@@ -186,30 +187,25 @@ async function vlessOverWSHandler(request) {
             vlessVersion = new Uint8Array([0, 0]),
             isUDP
           } = processVlessHeader(chunk, userID)
+
           address = addressRemote
           portWithRandomLog = `${portRemote}--${Math.random()} ${
             isUDP ? 'udp ' : 'tcp '
           } `
-          if (hasError) {
+
+          // cf seems has bug, controller.error will not end stream
+          if (hasError)
             // controller.error(message);
-            throw new Error(message) // cf seems has bug, controller.error will not end stream
-            // webSocket.close(1000, message);
-            return
-          }
+            throw new Error(message)
+
+          if (isUDP && portRemote === 53) isDns = true
           // if UDP but port not DNS port, close it
-          if (isUDP) {
-            if (portRemote === 53) {
-              isDns = true
-            } else {
-              // controller.error('UDP proxy only enable for DNS which is port 53');
-              throw new Error('UDP proxy only enable for DNS which is port 53') // cf seems has bug, controller.error will not end stream
-              return
-            }
-          }
+          if (isUDP && portRemote !== 53)
+            throw new Error('UDP proxy only enable for DNS which is port 53')
+
           // ["version", "附加信息长度 N"]
           const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0])
           const rawClientData = chunk.slice(rawDataIndex)
-
           if (isDns) {
             return handleDNSQuery(
               rawClientData,
@@ -218,6 +214,7 @@ async function vlessOverWSHandler(request) {
               log
             )
           }
+
           handleTCPOutBound(
             remoteSocketWapper,
             addressType,
@@ -323,9 +320,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
   const stream = new ReadableStream({
     start(controller) {
       webSocketServer.addEventListener('message', (event) => {
-        if (readableStreamCancel) {
-          return
-        }
+        if (readableStreamCancel) return
         const message = event.data
         controller.enqueue(message)
       })
@@ -337,9 +332,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
         // client send close, need close server
         // if stream is cancel, skip controller.close
         safeCloseWebSocket(webSocketServer)
-        if (readableStreamCancel) {
-          return
-        }
+        if (readableStreamCancel) return
         controller.close()
       })
       webSocketServer.addEventListener('error', (err) => {
@@ -358,9 +351,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
       // 1. pipe WritableStream has error, this cancel will called, so ws handle server close into here
       // 2. if readableStream is cancel, all controller.close/enqueue need skip,
       // 3. but from testing controller.error still work even if readableStream is cancel
-      if (readableStreamCancel) {
-        return
-      }
+      if (readableStreamCancel) return
       log(`ReadableStream was canceled, due to ${reason}`)
       readableStreamCancel = true
       safeCloseWebSocket(webSocketServer)
@@ -375,7 +366,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 
 /**
  *
- * @param { ArrayBuffer} vlessBuffer
+ * @param {ArrayBuffer} vlessBuffer
  * @param {string} userID
  * @returns
  */
@@ -610,6 +601,7 @@ function safeCloseWebSocket(socket) {
   }
 }
 
+// Like: ['00', '01',...,'ff'] -> length 256
 const byteToHex = []
 for (let i = 0; i < 256; ++i) {
   byteToHex.push((i + 256).toString(16).slice(1))
