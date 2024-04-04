@@ -2,5 +2,6 @@
 
 1. 客户端先发送一个看似正常的 HTTP 请求，但在头部携带 `Upgrade: websocket` 等相关头字段，表示想要升级到 WebSocket 协议
 2. 服务端检测到 Upgrade 标头后，调用 vlessOverWSHandler 函数处理这个 WebSocket 连接请求（[Cloudlfare 中使用 WebSocket 连接](https://developers.cloudflare.com/workers/runtime-apis/websockets/#constructor)）
+3. 关于 `sec-websocket-protocol` 标头的疑惑：该标头原始是用来表示服务端支持的子协议，但是在 vless 中被用于承载 early data，查看[该 PR](https://github.com/XTLS/Xray-core/pull/375)。
 
 各种参考：<https://www.cnblogs.com/huaglicg/p/10422919.html>、<https://sekai.icu/posts/design-issues-in-the-vless-protocol/>、<https://xtls.github.io/development/protocols/vless.html#request-response>

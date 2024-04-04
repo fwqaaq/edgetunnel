@@ -36,7 +36,7 @@ export default {
    * @param {import("@cloudflare/workers-types").ExecutionContext} ctx
    * @returns {Promise<Response>}
    */
-  async fetch(request, env, ctx) {
+  async fetch(request, env, _ctx) {
     try {
       const userAgent = request.headers.get('User-Agent').toLowerCase()
       userID = (env.UUID || userID).toLowerCase()
@@ -948,7 +948,7 @@ async function getVLESSConfig(userID, hostName, sub, userAgent, RproxyIP) {
 	  sni: ${hostName}
 	  client-fingerprint: chrome
 	  ws-opts:
-	    path: "/?ed=2048"
+	    path: "/?ed=2560"
 	    headers:
 		  host: ${hostName}
 	---------------------------------------------------------------
@@ -986,7 +986,7 @@ async function getVLESSConfig(userID, hostName, sub, userAgent, RproxyIP) {
 	  sni: ${hostName}
 	  client-fingerprint: chrome
 	  ws-opts:
-		path: "/?ed=2048"
+		path: "/?ed=2560"
 		headers:
 		  host: ${hostName}
 	---------------------------------------------------------------
