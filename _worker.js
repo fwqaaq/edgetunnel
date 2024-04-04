@@ -148,6 +148,7 @@ async function vlessOverWSHandler(request) {
     console.log(`[${address}:${portWithRandomLog}] ${info}`, event || '')
   }
   const earlyDataHeader = request.headers.get('sec-websocket-protocol') || ''
+  log('sec-websocket-protocol', earlyDataHeader)
 
   const readableWebSocketStream = makeReadableWebSocketStream(
     webSocket,
