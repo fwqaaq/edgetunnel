@@ -147,13 +147,12 @@ async function vlessOverWSHandler(request) {
   ) => {
     console.log(`[${address}:${portWithRandomLog}] ${info}`, event || '')
   }
-  const earlyDataHeader = request.headers.get('sec-websocket-protocol') || ''
-  log('sec-websocket-protocol', earlyDataHeader)
+  // const earlyDataHeader = request.headers.get('sec-websocket-protocol') || ''
 
   const readableWebSocketStream = makeReadableWebSocketStream(
     webSocket,
-    earlyDataHeader,
     log
+    // earlyDataHeader,
   )
 
   /** @type {{ value: import("@cloudflare/workers-types").Socket | null}}*/
@@ -166,11 +165,8 @@ async function vlessOverWSHandler(request) {
   readableWebSocketStream
     .pipeTo(
       new WritableStream({
-        start() {},
+        /**@param {ArrayBuffer} chunk  */
         async write(chunk, _controller) {
-          if (isDns) {
-            return await handleDNSQuery(chunk, webSocket, null, log)
-          }
           if (remoteSocketWapper.value) {
             const writer = remoteSocketWapper.value.writable.getWriter()
             await writer.write(chunk)
@@ -195,9 +191,7 @@ async function vlessOverWSHandler(request) {
           } `
 
           // cf seems has bug, controller.error will not end stream
-          if (hasError)
-            // controller.error(message);
-            throw new Error(message)
+          if (hasError) throw new Error(message)
 
           if (isUDP && portRemote === 53) isDns = true
           // if UDP but port not DNS port, close it
@@ -246,6 +240,8 @@ async function vlessOverWSHandler(request) {
   })
 }
 
+const decoder = new TextDecoder()
+
 /**
  * Handles outbound TCP connections.
  *
@@ -280,6 +276,7 @@ async function handleTCPOutBound(
     remoteSocket.value = tcpSocket
     log(`connected to ${address}:${port}`)
     const writer = tcpSocket.writable.getWriter()
+    console.log('[rawClientData]:', decoder.decode(rawClientData))
     await writer.write(rawClientData) // first write, normal is tls client hello
     writer.releaseLock()
     return tcpSocket
@@ -313,10 +310,10 @@ async function handleTCPOutBound(
 /**
  *
  * @param {import("@cloudflare/workers-types").WebSocket} webSocketServer
- * @param {string} earlyDataHeader for ws 0rtt
+ * @param {string} _earlyDataHeader for ws 0rtt
  * @param {(info: string)=> void} log for ws 0rtt
  */
-function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
+function makeReadableWebSocketStream(webSocketServer, log, _earlyDataHeader) {
   let readableStreamCancel = false
   const stream = new ReadableStream({
     start(controller) {
@@ -341,12 +338,12 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
         controller.error(err)
       })
       // for ws 0rtt
-      const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader)
-      if (error) {
-        controller.error(error)
-      } else if (earlyData) {
-        controller.enqueue(earlyData)
-      }
+      // const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader)
+      // if (error) {
+      //   controller.error(error)
+      // } else if (earlyData) {
+      //   controller.enqueue(earlyData)
+      // }
     },
     cancel(reason) {
       // 1. pipe WritableStream has error, this cancel will called, so ws handle server close into here
@@ -365,8 +362,10 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 // https://xtls.github.io/development/protocols/vless.html
 // https://github.com/zizifn/excalidraw-backup/blob/main/v2ray-protocol.excalidraw
 
+// | 1B      | 16B    | 1B           | MB	              |  1B  | 2B    |  1B    | SB  | XB
+// | version | UUID   | 附加信息长度 M | 附加信息 ProtoBuf | 指令  |  port | 地址类型 | 地址 |请求数据
+
 /**
- *
  * @param {ArrayBuffer} vlessBuffer
  * @param {string} userID
  * @returns
@@ -378,6 +377,7 @@ function processVlessHeader(vlessBuffer, userID) {
       message: 'invalid data'
     }
   }
+
   const version = new Uint8Array(vlessBuffer.slice(0, 1))
   let isValidUser = false
   let isUDP = false
@@ -401,14 +401,17 @@ function processVlessHeader(vlessBuffer, userID) {
   // 0x01 TCP
   // 0x02 UDP
   // 0x03 MUX
-  if (command === 1) {
-  } else if (command === 2) {
-    isUDP = true
-  } else {
-    return {
-      hasError: true,
-      message: `command ${command} is not support, command 01-tcp,02-udp,03-mux`
-    }
+  switch (command) {
+    case 1:
+      break
+    case 2:
+      isUDP = true
+      break
+    case 3:
+      return {
+        hasError: true,
+        message: `command ${command} is not support, command 01-tcp,02-udp,03-mux`
+      }
   }
   const portIndex = 18 + optLength + 1
   const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2)
@@ -504,7 +507,6 @@ async function remoteSocketToWS(
   await remoteSocket.readable
     .pipeTo(
       new WritableStream({
-        start() {},
         /**
          *
          * @param {Uint8Array} chunk
@@ -558,20 +560,20 @@ async function remoteSocketToWS(
  * @param {string} base64Str
  * @returns
  */
-function base64ToArrayBuffer(base64Str) {
-  if (!base64Str) {
-    return { error: null }
-  }
-  try {
-    // go use modified Base64 for URL rfc4648 which js atob not support
-    base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/')
-    const decode = atob(base64Str)
-    const arryBuffer = Uint8Array.from(decode, (c) => c.charCodeAt(0))
-    return { earlyData: arryBuffer.buffer, error: null }
-  } catch (error) {
-    return { error }
-  }
-}
+// function base64ToArrayBuffer(base64Str) {
+//   if (!base64Str) {
+//     return { error: null }
+//   }
+//   try {
+//     // go use modified Base64 for URL rfc4648 which js atob not support
+//     base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/')
+//     const decode = atob(base64Str)
+//     const arryBuffer = Uint8Array.from(decode, (c) => c.charCodeAt(0))
+//     return { earlyData: arryBuffer.buffer, error: null }
+//   } catch (error) {
+//     return { error }
+//   }
+// }
 
 /**
  * This is not real UUID validation
@@ -648,7 +650,7 @@ function stringify(arr, offset = 0) {
  */
 async function handleDNSQuery(udpChunk, webSocket, vlessResponseHeader, log) {
   // no matter which DNS server client send, we alwasy use hard code one.
-  // beacsue someof DNS server is not support DNS over TCP
+  // because some of DNS server is not support DNS over TCP
   try {
     const dnsServer = '8.8.4.4' // change to 1.1.1.1 after cf fix connect own ip bug
     const dnsPort = 53
