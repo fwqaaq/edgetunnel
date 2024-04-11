@@ -1,0 +1,44 @@
+<mxfile host="65bd71144e">
+    <diagram id="wVmi1tSBlX5cve5m8lF1" name="Page-1">
+        <mxGraphModel dx="1134" dy="802" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="12" value="" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="495" y="210" width="230" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="WebSocket 被 ReadableStream&lt;br&gt;以流的形式传输，当 client 有请求之后，&lt;br&gt;会进行 pipe 到 WriteableStream" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="60" y="130" width="240" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="" style="shape=flexArrow;endArrow=classic;html=1;endWidth=19;endSize=5.21;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="315" y="269.5" as="sourcePoint"/>
+                        <mxPoint x="465" y="269.8571428571429" as="targetPoint"/>
+                        <Array as="points"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="6" value="PipeTo" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#6F0000;fillColor=#a20025;fontColor=#ffffff;" vertex="1" parent="1">
+                    <mxGeometry x="360" y="230" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="65" y="210" width="230" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="WebSocket" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="120" y="240" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="9" value="ReadableStream" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="125" y="210" width="110" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="10" value="Client" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="550" y="240" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="14" value="WritableStream" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="555" y="210" width="110" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="15" value="会先处理 chunk 的内容的前 N 字节&lt;br&gt;然后 WebSocket 会利用 send 方法&lt;br&gt;将流发回 Client" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="505" y="140" width="210" height="60" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

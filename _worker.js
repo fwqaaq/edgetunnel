@@ -131,7 +131,7 @@ export default {
  *
  * @param {import("@cloudflare/workers-types").Request} request
  */
-async function vlessOverWSHandler(request) {
+async function vlessOverWSHandler(_request) {
   /** @type {import("@cloudflare/workers-types").WebSocket[]} */
   // @ts-ignore
   const webSocketPair = new WebSocketPair()
@@ -156,7 +156,7 @@ async function vlessOverWSHandler(request) {
   )
 
   /** @type {{ value: import("@cloudflare/workers-types").Socket | null}}*/
-  const remoteSocketWapper = {
+  const remoteSocketWrapper = {
     value: null
   }
   let isDns = false
@@ -167,8 +167,8 @@ async function vlessOverWSHandler(request) {
       new WritableStream({
         /**@param {ArrayBuffer} chunk  */
         async write(chunk, _controller) {
-          if (remoteSocketWapper.value) {
-            const writer = remoteSocketWapper.value.writable.getWriter()
+          if (remoteSocketWrapper.value) {
+            const writer = remoteSocketWrapper.value.writable.getWriter()
             await writer.write(chunk)
             writer.releaseLock()
             return
@@ -200,6 +200,7 @@ async function vlessOverWSHandler(request) {
 
           // ["version", "附加信息长度 N"]
           const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0])
+          // X bytes data
           const rawClientData = chunk.slice(rawDataIndex)
           if (isDns) {
             return handleDNSQuery(
@@ -211,7 +212,7 @@ async function vlessOverWSHandler(request) {
           }
 
           handleTCPOutBound(
-            remoteSocketWapper,
+            remoteSocketWrapper,
             addressType,
             addressRemote,
             portRemote,
@@ -240,8 +241,6 @@ async function vlessOverWSHandler(request) {
   })
 }
 
-const decoder = new TextDecoder()
-
 /**
  * Handles outbound TCP connections.
  *
@@ -269,14 +268,10 @@ async function handleTCPOutBound(
     /** @type {import("@cloudflare/workers-types").Socket} */
     const tcpSocket = socks
       ? await socks5Connect(addressType, address, port, log)
-      : connect({
-          hostname: address,
-          port: port
-        })
+      : connect({ hostname: address, port: port })
     remoteSocket.value = tcpSocket
     log(`connected to ${address}:${port}`)
     const writer = tcpSocket.writable.getWriter()
-    console.log('[rawClientData]:', decoder.decode(rawClientData))
     await writer.write(rawClientData) // first write, normal is tls client hello
     writer.releaseLock()
     return tcpSocket
@@ -398,9 +393,7 @@ function processVlessHeader(vlessBuffer, userID) {
     vlessBuffer.slice(18 + optLength, 18 + optLength + 1)
   )[0]
 
-  // 0x01 TCP
-  // 0x02 UDP
-  // 0x03 MUX
+  // 0x01 TCP | 0x02 UDP | 0x03 MUX
   switch (command) {
     case 1:
       break
@@ -499,8 +492,6 @@ async function remoteSocketToWS(
   log
 ) {
   // remote--> ws
-  let remoteChunkCount = 0
-  let chunks = []
   /** @type {ArrayBuffer | null} */
   let vlessHeader = vlessResponseHeader
   let hasIncomingData = false // check if remoteSocket has incoming data
@@ -508,25 +499,20 @@ async function remoteSocketToWS(
     .pipeTo(
       new WritableStream({
         /**
-         *
          * @param {Uint8Array} chunk
          * @param {*} controller
          */
-        async write(chunk, controller) {
+        async write(chunk, _controller) {
           hasIncomingData = true
-          // remoteChunkCount++;
           if (webSocket.readyState !== WS_READY_STATE_OPEN) {
-            controller.error('webSocket.readyState is not open, maybe close')
+            throw new Error('webSocket.readyState is not open, maybe close')
           }
           if (vlessHeader) {
-            webSocket.send(await new Blob([vlessHeader, chunk]).arrayBuffer())
+            webSocket.send(
+              new Uint8Array([...new Uint8Array(vlessHeader), ...chunk])
+            )
             vlessHeader = null
           } else {
-            // seems no need rate limit this, CF seems fix this??..
-            // if (remoteChunkCount > 20000) {
-            // 	// cf one package is 4096 byte(4kb),  4096 * 20000 = 80M
-            // 	await delay(1);
-            // }
             webSocket.send(chunk)
           }
         },
@@ -534,7 +520,6 @@ async function remoteSocketToWS(
           log(
             `remoteConnection!.readable is close with hasIncomingData is ${hasIncomingData}`
           )
-          // safeCloseWebSocket(webSocket); // no need server close websocket frist for some case will casue HTTP ERR_CONTENT_LENGTH_MISMATCH issue, client will send close event anyway.
         },
         abort(reason) {
           console.error(`remoteConnection!.readable abort`, reason)
