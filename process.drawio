@@ -1,42 +1,82 @@
 <mxfile host="65bd71144e">
     <diagram id="wVmi1tSBlX5cve5m8lF1" name="Page-1">
-        <mxGraphModel dx="1134" dy="802" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+        <mxGraphModel dx="684" dy="284" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
-                <mxCell id="12" value="" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-                    <mxGeometry x="495" y="210" width="230" height="120" as="geometry"/>
+                <mxCell id="29" value="" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="780" y="170" width="250" height="400" as="geometry"/>
                 </mxCell>
-                <mxCell id="3" value="WebSocket 被 ReadableStream&lt;br&gt;以流的形式传输，当 client 有请求之后，&lt;br&gt;会进行 pipe 到 WriteableStream" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
-                    <mxGeometry x="60" y="130" width="240" height="60" as="geometry"/>
+                <mxCell id="12" value="只处理一次 Vless Header，&lt;br&gt;获取地址、端口等信息&lt;br&gt;&lt;b&gt;同时建立 TCP 连接&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="425" y="220" width="195" height="100" as="geometry"/>
                 </mxCell>
-                <mxCell id="5" value="" style="shape=flexArrow;endArrow=classic;html=1;endWidth=19;endSize=5.21;" edge="1" parent="1">
+                <mxCell id="3" value="ReadableStream 包裹 webSocket&lt;br&gt;以流的形式传输，当 client 有请求之后，&lt;br&gt;会进行 pipeThrough 到 TransformStream" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="10" y="130" width="240" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="" style="shape=flexArrow;endArrow=classic;html=1;endWidth=19;endSize=5.21;" parent="1" edge="1">
                     <mxGeometry width="50" height="50" relative="1" as="geometry">
-                        <mxPoint x="315" y="269.5" as="sourcePoint"/>
-                        <mxPoint x="465" y="269.8571428571429" as="targetPoint"/>
+                        <mxPoint x="265" y="269.5" as="sourcePoint"/>
+                        <mxPoint x="415" y="269.8571428571429" as="targetPoint"/>
                         <Array as="points"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="6" value="PipeTo" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#6F0000;fillColor=#a20025;fontColor=#ffffff;" vertex="1" parent="1">
-                    <mxGeometry x="360" y="230" width="60" height="30" as="geometry"/>
+                <mxCell id="6" value="pipeThrough" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#6F0000;fillColor=#a20025;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="295" y="230" width="90" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="8" value="" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-                    <mxGeometry x="65" y="210" width="230" height="120" as="geometry"/>
+                <mxCell id="8" value="" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="15" y="210" width="230" height="120" as="geometry"/>
                 </mxCell>
-                <mxCell id="2" value="WebSocket" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-                    <mxGeometry x="120" y="240" width="120" height="60" as="geometry"/>
+                <mxCell id="2" value="WebSocket" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="70" y="240" width="120" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="9" value="ReadableStream" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
-                    <mxGeometry x="125" y="210" width="110" height="30" as="geometry"/>
+                <mxCell id="9" value="ReadableStream" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="75" y="210" width="110" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="10" value="Client" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-                    <mxGeometry x="550" y="240" width="120" height="60" as="geometry"/>
+                <mxCell id="14" value="TransformStream" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="220" width="120" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="14" value="WritableStream" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
-                    <mxGeometry x="555" y="210" width="110" height="30" as="geometry"/>
+                <mxCell id="15" value="" style="shape=flexArrow;endArrow=classic;html=1;endWidth=19;endSize=5.21;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="625" y="269.5" as="sourcePoint"/>
+                        <mxPoint x="775" y="269.8571428571429" as="targetPoint"/>
+                        <Array as="points"/>
+                    </mxGeometry>
                 </mxCell>
-                <mxCell id="15" value="会先处理 chunk 的内容的前 N 字节&lt;br&gt;然后 WebSocket 会利用 send 方法&lt;br&gt;将流发回 Client" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
-                    <mxGeometry x="505" y="140" width="210" height="60" as="geometry"/>
+                <mxCell id="16" value="pipeTo" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#6F0000;fillColor=#a20025;fontColor=#ffffff;" vertex="1" parent="1">
+                    <mxGeometry x="660" y="230" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="18" value="将 WebSocket 中读取的数据流&lt;br&gt;写入到 tcpSocket.writeable&lt;br&gt;(remoteSocketWrapper)" style="rounded=0;whiteSpace=wrap;html=1;fontStyle=1" vertex="1" parent="1">
+                    <mxGeometry x="800" y="220" width="195" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="20" value="tcpSocket.readable 读取&lt;br&gt;writable 中的数据" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="800" y="425" width="195" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="23" value="" style="shape=flexArrow;endArrow=classic;html=1;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="740" y="474.5" as="sourcePoint"/>
+                        <mxPoint x="640" y="474.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="24" value="传输数据给 webSocket，&lt;br&gt;发送给 client" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="422.5" y="425" width="195" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="25" value="writable" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#005700;fillColor=#008a00;fontColor=#ffffff;" vertex="1" parent="1">
+                    <mxGeometry x="867.5" y="220" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="27" value="pipeTo" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#6F0000;fillColor=#a20025;fontColor=#ffffff;" vertex="1" parent="1">
+                    <mxGeometry x="670" y="430" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="28" value="tcpSocket" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#6F0000;fillColor=#a20025;fontColor=#ffffff;" vertex="1" parent="1">
+                    <mxGeometry x="890" y="355" width="80" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="30" value="" style="endArrow=classic;startArrow=classic;html=1;fillColor=#a20025;strokeColor=#6F0000;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="883" y="420" as="sourcePoint"/>
+                        <mxPoint x="882.5" y="320" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="31" value="readable" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=#005700;fillColor=#008a00;fontColor=#ffffff;" vertex="1" parent="1">
+                    <mxGeometry x="862.5" y="430" width="70" height="30" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>

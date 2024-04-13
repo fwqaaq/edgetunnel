@@ -156,86 +156,85 @@ async function vlessOverWSHandler(request) {
   )
 
   /**@type {{writable: WritableStream<ArrayBuffer>}} */
-  const remoteSocketWrapper = {
-    writable: null
-  }
+  const remoteSocketWrapper = { writable: null }
 
-  let isDns = false
+  let isDns = false,
+    isProcessVlessHeader = false
+
+  const transformStream = new TransformStream({
+    /**@param {ArrayBuffer} chunk  */
+    transform(chunk, controller) {
+      if (isProcessVlessHeader) return controller.enqueue(chunk)
+      isProcessVlessHeader = true
+
+      const {
+        hasError,
+        message,
+        addressType,
+        portRemote = 443,
+        addressRemote = '',
+        rawDataIndex,
+        vlessVersion = new Uint8Array([0, 0]),
+        isUDP
+      } = processVlessHeader(chunk, userID)
+
+      address = addressRemote
+      portWithRandomLog = `${portRemote}--${Math.random()} ${
+        isUDP ? 'udp ' : 'tcp '
+      }`
+
+      // cf seems has bug, controller.error will not end stream
+      if (hasError) throw new Error(message)
+
+      if (isUDP && portRemote === 53) isDns = true
+      // if UDP but port not DNS port, close it
+      if (isUDP && portRemote !== 53)
+        throw new Error('UDP proxy only enable for DNS which is port 53')
+
+      // ["version", "附加信息长度 N"]
+      const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0])
+      // X bytes data
+      const raw = chunk.slice(rawDataIndex)
+      if (isDns) {
+        return handleDNSQuery(raw, webSocket, vlessResponseHeader, log)
+      }
+
+      handleTCPOutBound(
+        remoteSocketWrapper,
+        addressType,
+        addressRemote,
+        portRemote,
+        raw,
+        webSocket,
+        vlessResponseHeader,
+        log
+      )
+    },
+    close() {
+      log(`readableWebSocketStream is close`)
+    },
+    abort(reason) {
+      log(`readableWebSocketStream is abort`, JSON.stringify(reason))
+    }
+  })
+
+  const writableStream = new WritableStream({
+    async write(chunk) {
+      if (isDns) return await handleDNSQuery(chunk, webSocket, null, log)
+      // Read chunk until handle vless header
+      if (remoteSocketWrapper.writable) {
+        const writer = remoteSocketWrapper.writable.getWriter()
+        writer.write(chunk)
+        writer.releaseLock()
+        return
+      }
+    }
+  })
 
   // ws --> remote
   readableWebSocketStream
-    .pipeTo(
-      new WritableStream({
-        /**@param {ArrayBuffer} chunk  */
-        async write(chunk) {
-          // Read chunk util handle vless header
-          log(
-            `ws --> remote`,
-            `remoteSocketSocketWrapper is ${remoteSocketWrapper.writable}`
-          )
-          if (remoteSocketWrapper.writable) {
-            const writer = remoteSocketWrapper.writable.getWriter()
-            writer.write(chunk)
-            writer.releaseLock()
-            return
-          }
-
-          const {
-            hasError,
-            message,
-            addressType,
-            portRemote = 443,
-            addressRemote = '',
-            rawDataIndex,
-            vlessVersion = new Uint8Array([0, 0]),
-            isUDP
-          } = processVlessHeader(chunk, userID)
-
-          address = addressRemote
-          portWithRandomLog = `${portRemote}--${Math.random()} ${
-            isUDP ? 'udp ' : 'tcp '
-          } `
-
-          // cf seems has bug, controller.error will not end stream
-          if (hasError) throw new Error(message)
-
-          if (isUDP && portRemote === 53) isDns = true
-          // if UDP but port not DNS port, close it
-          if (isUDP && portRemote !== 53)
-            throw new Error('UDP proxy only enable for DNS which is port 53')
-
-          // ["version", "附加信息长度 N"]
-          const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0])
-          // X bytes data
-          const rawClientData = chunk.slice(rawDataIndex)
-          if (isDns) {
-            return handleDNSQuery(
-              rawClientData,
-              webSocket,
-              vlessResponseHeader,
-              log
-            )
-          }
-
-          handleTCPOutBound(
-            remoteSocketWrapper,
-            addressType,
-            addressRemote,
-            portRemote,
-            rawClientData,
-            webSocket,
-            vlessResponseHeader,
-            log
-          )
-        },
-        close() {
-          log(`readableWebSocketStream is close`)
-        },
-        abort(reason) {
-          log(`readableWebSocketStream is abort`, JSON.stringify(reason))
-        }
-      })
-    )
+    .pipeThrough(transformStream)
+    .pipeTo(writableStream)
     .catch((err) => {
       log('readableWebSocketStream pipeTo error', err)
     })
@@ -502,36 +501,33 @@ async function remoteSocketToWS(
   // remote--> ws
   let vlessHeader = vlessResponseHeader
   let hasIncomingData = false // check if remoteSocket has incoming data
-  await remoteSocket.readable
-    .pipeTo(
-      new WritableStream({
-        /** @param {Uint8Array} chunk*/
-        async write(chunk) {
-          hasIncomingData = true
-          if (webSocket.readyState !== WS_READY_STATE_OPEN) {
-            throw new Error('webSocket.readyState is not open, maybe close')
-          }
-          if (vlessHeader) {
-            webSocket.send(new Uint8Array([...vlessHeader, ...chunk]))
-            vlessHeader = null
-          } else {
-            webSocket.send(chunk)
-          }
-        },
-        close() {
-          log(
-            `remoteConnection!.readable is close with hasIncomingData is ${hasIncomingData}`
-          )
-        },
-        abort(reason) {
-          console.error(`remoteConnection!.readable abort`, reason)
-        }
-      })
-    )
-    .catch((error) => {
-      console.error(`remoteSocketToWS has exception `, error.stack || error)
-      safeCloseWebSocket(webSocket)
-    })
+  const webSocketWritableStream = new WritableStream({
+    /** @param {Uint8Array} chunk*/
+    async write(chunk) {
+      hasIncomingData = true
+      if (webSocket.readyState !== WS_READY_STATE_OPEN) {
+        throw new Error('webSocket.readyState is not open, maybe close')
+      }
+      if (vlessHeader) {
+        webSocket.send(new Uint8Array([...vlessHeader, ...chunk]))
+        vlessHeader = null
+      } else {
+        webSocket.send(chunk)
+      }
+    },
+    close() {
+      log(
+        `remoteConnection!.readable is close with hasIncomingData is ${hasIncomingData}`
+      )
+    },
+    abort(reason) {
+      console.error(`remoteConnection!.readable abort`, reason)
+    }
+  })
+  await remoteSocket.readable.pipeTo(webSocketWritableStream).catch((error) => {
+    console.error(`remoteSocketToWS has exception `, error.stack || error)
+    safeCloseWebSocket(webSocket)
+  })
 
   // seems is cf connect socket have error,
   // 1. Socket.closed will have error
