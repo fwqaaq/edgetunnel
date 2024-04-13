@@ -131,7 +131,7 @@ export default {
  *
  * @param {import("@cloudflare/workers-types").Request} request
  */
-async function vlessOverWSHandler(_request) {
+async function vlessOverWSHandler(request) {
   /** @type {import("@cloudflare/workers-types").WebSocket[]} */
   // @ts-ignore
   const webSocketPair = new WebSocketPair()
@@ -147,18 +147,19 @@ async function vlessOverWSHandler(_request) {
   ) => {
     console.log(`[${address}:${portWithRandomLog}] ${info}`, event || '')
   }
-  // const earlyDataHeader = request.headers.get('sec-websocket-protocol') || ''
+  const earlyDataHeader = request.headers.get('sec-websocket-protocol') || ''
 
   const readableWebSocketStream = makeReadableWebSocketStream(
     webSocket,
-    log
-    // earlyDataHeader,
+    log,
+    earlyDataHeader
   )
 
-  /** @type {{ value: import("@cloudflare/workers-types").Socket | null}}*/
+  /**@type {{writable: WritableStream<ArrayBuffer>}} */
   const remoteSocketWrapper = {
-    value: null
+    writable: null
   }
+
   let isDns = false
 
   // ws --> remote
@@ -166,10 +167,15 @@ async function vlessOverWSHandler(_request) {
     .pipeTo(
       new WritableStream({
         /**@param {ArrayBuffer} chunk  */
-        async write(chunk, _controller) {
-          if (remoteSocketWrapper.value) {
-            const writer = remoteSocketWrapper.value.writable.getWriter()
-            await writer.write(chunk)
+        async write(chunk) {
+          // Read chunk util handle vless header
+          log(
+            `ws --> remote`,
+            `remoteSocketSocketWrapper is ${remoteSocketWrapper.writable}`
+          )
+          if (remoteSocketWrapper.writable) {
+            const writer = remoteSocketWrapper.writable.getWriter()
+            writer.write(chunk)
             writer.releaseLock()
             return
           }
@@ -244,18 +250,18 @@ async function vlessOverWSHandler(_request) {
 /**
  * Handles outbound TCP connections.
  *
- * @param {any} remoteSocket
+ * @param {{writable: WritableStream<ArrayBuffer>}} remoteSocketWrapper
  * @param {number} addressType The remote address type to connect to.
  * @param {string} addressRemote The remote address to connect to.
  * @param {number} portRemote The remote port to connect to.
- * @param {Uint8Array} rawClientData The raw client data to write.
+ * @param {ArrayBuffer} rawClientData The raw client data to write.
  * @param {import("@cloudflare/workers-types").WebSocket} webSocket The WebSocket to pass the remote socket to.
  * @param {Uint8Array} vlessResponseHeader The VLESS response header.
  * @param {function} log The logging function.
  * @returns {Promise<void>} The remote socket.
  */
 async function handleTCPOutBound(
-  remoteSocket,
+  remoteSocketWrapper,
   addressType,
   addressRemote,
   portRemote,
@@ -269,7 +275,8 @@ async function handleTCPOutBound(
     const tcpSocket = socks
       ? await socks5Connect(addressType, address, port, log)
       : connect({ hostname: address, port: port })
-    remoteSocket.value = tcpSocket
+    remoteSocketWrapper.writable = tcpSocket.writable
+
     log(`connected to ${address}:${port}`)
     const writer = tcpSocket.writable.getWriter()
     await writer.write(rawClientData) // first write, normal is tls client hello
@@ -279,11 +286,12 @@ async function handleTCPOutBound(
 
   // if the cf connect tcp socket have no incoming data, we retry to redirect ip
   async function retry() {
-    if (enableSocks) {
-      tcpSocket = await connectAndWrite(addressRemote, portRemote, true)
-    } else {
-      tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote)
-    }
+    tcpSocket = await connectAndWrite(
+      enableSocks ? addressRemote : proxyIP || addressRemote,
+      portRemote,
+      enableSocks
+    )
+
     // no matter retry success or not, close websocket
     tcpSocket.closed
       .catch((error) => {
@@ -305,10 +313,10 @@ async function handleTCPOutBound(
 /**
  *
  * @param {import("@cloudflare/workers-types").WebSocket} webSocketServer
- * @param {string} _earlyDataHeader for ws 0rtt
+ * @param {string} earlyDataHeader for ws 0rtt
  * @param {(info: string)=> void} log for ws 0rtt
  */
-function makeReadableWebSocketStream(webSocketServer, log, _earlyDataHeader) {
+function makeReadableWebSocketStream(webSocketServer, log, earlyDataHeader) {
   let readableStreamCancel = false
   const stream = new ReadableStream({
     start(controller) {
@@ -333,12 +341,12 @@ function makeReadableWebSocketStream(webSocketServer, log, _earlyDataHeader) {
         controller.error(err)
       })
       // for ws 0rtt
-      // const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader)
-      // if (error) {
-      //   controller.error(error)
-      // } else if (earlyData) {
-      //   controller.enqueue(earlyData)
-      // }
+      const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader)
+      if (error) {
+        controller.error(error)
+      } else if (earlyData) {
+        controller.enqueue(earlyData)
+      }
     },
     cancel(reason) {
       // 1. pipe WritableStream has error, this cancel will called, so ws handle server close into here
@@ -480,7 +488,7 @@ function processVlessHeader(vlessBuffer, userID) {
  *
  * @param {import("@cloudflare/workers-types").Socket} remoteSocket
  * @param {import("@cloudflare/workers-types").WebSocket} webSocket
- * @param {ArrayBuffer} vlessResponseHeader
+ * @param {Uint8Array} vlessResponseHeader
  * @param {(() => Promise<void>) | null} retry
  * @param {*} log
  */
@@ -492,25 +500,19 @@ async function remoteSocketToWS(
   log
 ) {
   // remote--> ws
-  /** @type {ArrayBuffer | null} */
   let vlessHeader = vlessResponseHeader
   let hasIncomingData = false // check if remoteSocket has incoming data
   await remoteSocket.readable
     .pipeTo(
       new WritableStream({
-        /**
-         * @param {Uint8Array} chunk
-         * @param {*} controller
-         */
-        async write(chunk, _controller) {
+        /** @param {Uint8Array} chunk*/
+        async write(chunk) {
           hasIncomingData = true
           if (webSocket.readyState !== WS_READY_STATE_OPEN) {
             throw new Error('webSocket.readyState is not open, maybe close')
           }
           if (vlessHeader) {
-            webSocket.send(
-              new Uint8Array([...new Uint8Array(vlessHeader), ...chunk])
-            )
+            webSocket.send(new Uint8Array([...vlessHeader, ...chunk]))
             vlessHeader = null
           } else {
             webSocket.send(chunk)
@@ -545,20 +547,18 @@ async function remoteSocketToWS(
  * @param {string} base64Str
  * @returns
  */
-// function base64ToArrayBuffer(base64Str) {
-//   if (!base64Str) {
-//     return { error: null }
-//   }
-//   try {
-//     // go use modified Base64 for URL rfc4648 which js atob not support
-//     base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/')
-//     const decode = atob(base64Str)
-//     const arryBuffer = Uint8Array.from(decode, (c) => c.charCodeAt(0))
-//     return { earlyData: arryBuffer.buffer, error: null }
-//   } catch (error) {
-//     return { error }
-//   }
-// }
+function base64ToArrayBuffer(base64Str) {
+  if (!base64Str) return { error: null }
+  try {
+    // go use modified Base64 for URL rfc4648 which js atob not support
+    base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/')
+    const decode = atob(base64Str)
+    const arrayBuffer = Uint8Array.from(decode, (c) => c.charCodeAt(0))
+    return { earlyData: arrayBuffer.buffer, error: null }
+  } catch (error) {
+    return { error }
+  }
+}
 
 /**
  * This is not real UUID validation
@@ -630,7 +630,7 @@ function stringify(arr, offset = 0) {
  *
  * @param {ArrayBuffer} udpChunk
  * @param {import("@cloudflare/workers-types").WebSocket} webSocket
- * @param {ArrayBuffer} vlessResponseHeader
+ * @param {Uint8Array} vlessResponseHeader
  * @param {(string)=> void} log
  */
 async function handleDNSQuery(udpChunk, webSocket, vlessResponseHeader, log) {
@@ -639,7 +639,6 @@ async function handleDNSQuery(udpChunk, webSocket, vlessResponseHeader, log) {
   try {
     const dnsServer = '8.8.4.4' // change to 1.1.1.1 after cf fix connect own ip bug
     const dnsPort = 53
-    /** @type {ArrayBuffer | null} */
     let vlessHeader = vlessResponseHeader
     /** @type {import("@cloudflare/workers-types").Socket} */
     const tcpSocket = connect({
@@ -656,7 +655,7 @@ async function handleDNSQuery(udpChunk, webSocket, vlessResponseHeader, log) {
         async write(chunk) {
           if (webSocket.readyState === WS_READY_STATE_OPEN) {
             if (vlessHeader) {
-              webSocket.send(await new Blob([vlessHeader, chunk]).arrayBuffer())
+              webSocket.send(new Uint8Array([...vlessHeader, ...chunk]))
               vlessHeader = null
             } else {
               webSocket.send(chunk)
