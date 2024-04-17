@@ -158,14 +158,21 @@ async function vlessOverWSHandler(request) {
   /**@type {{writable: WritableStream<ArrayBuffer>}} */
   const remoteSocketWrapper = { writable: null }
 
-  let isDns = false,
-    isProcessVlessHeader = false
+  let isDns = false
+  /**@type {(chunk: ArrayBuffer)=>void} */
+  let udpWriter = null
 
-  const transformStream = new TransformStream({
+  const writableStream = new WritableStream({
     /**@param {ArrayBuffer} chunk  */
-    transform(chunk, controller) {
-      if (isProcessVlessHeader) return controller.enqueue(chunk)
-      isProcessVlessHeader = true
+    async write(chunk) {
+      if (isDns && udpWriter) return await udpWriter(chunk)
+      // Read chunk until handle vless header
+      if (remoteSocketWrapper.writable) {
+        const writer = remoteSocketWrapper.writable.getWriter()
+        writer.write(chunk)
+        writer.releaseLock()
+        return
+      }
 
       const {
         hasError,
@@ -188,15 +195,23 @@ async function vlessOverWSHandler(request) {
 
       if (isUDP && portRemote === 53) isDns = true
       // if UDP but port not DNS port, close it
-      if (isUDP && portRemote !== 53)
+      if (isUDP && portRemote !== 53) {
         throw new Error('UDP proxy only enable for DNS which is port 53')
+      }
 
-      // ["version", "附加信息长度 N"]
+      // ["version", 0] 0 length
       const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0])
-      // X bytes data
+      // raw requests' bytes data
       const raw = chunk.slice(rawDataIndex)
       if (isDns) {
-        return handleDNSQuery(raw, webSocket, vlessResponseHeader, log)
+        const { write } = await handleUDPOutBound(
+          webSocket,
+          vlessResponseHeader,
+          log
+        )
+        udpWriter = write
+
+        return udpWriter(raw)
       }
 
       handleTCPOutBound(
@@ -218,26 +233,10 @@ async function vlessOverWSHandler(request) {
     }
   })
 
-  const writableStream = new WritableStream({
-    async write(chunk) {
-      if (isDns) return await handleDNSQuery(chunk, webSocket, null, log)
-      // Read chunk until handle vless header
-      if (remoteSocketWrapper.writable) {
-        const writer = remoteSocketWrapper.writable.getWriter()
-        writer.write(chunk)
-        writer.releaseLock()
-        return
-      }
-    }
-  })
-
   // ws --> remote
-  readableWebSocketStream
-    .pipeThrough(transformStream)
-    .pipeTo(writableStream)
-    .catch((err) => {
-      log('readableWebSocketStream pipeTo error', err)
-    })
+  readableWebSocketStream.pipeTo(writableStream).catch((err) => {
+    log('readableWebSocketStream pipeTo error', err)
+  })
 
   return new Response(null, {
     status: 101,
@@ -624,55 +623,59 @@ function stringify(arr, offset = 0) {
 
 /**
  *
- * @param {ArrayBuffer} udpChunk
  * @param {import("@cloudflare/workers-types").WebSocket} webSocket
  * @param {Uint8Array} vlessResponseHeader
- * @param {(string)=> void} log
+ * @param {(string) => void} log
  */
-async function handleDNSQuery(udpChunk, webSocket, vlessResponseHeader, log) {
-  // no matter which DNS server client send, we alwasy use hard code one.
-  // because some of DNS server is not support DNS over TCP
-  try {
-    const dnsServer = '8.8.4.4' // change to 1.1.1.1 after cf fix connect own ip bug
-    const dnsPort = 53
-    let vlessHeader = vlessResponseHeader
-    /** @type {import("@cloudflare/workers-types").Socket} */
-    const tcpSocket = connect({
-      hostname: dnsServer,
-      port: dnsPort
-    })
+async function handleUDPOutBound(webSocket, vlessResponseHeader, log) {
+  const transformStream = new TransformStream({
+    /**@param {ArrayBuffer} chunk*/
+    transform(chunk, controller) {
+      for (let i = 0; i < chunk.byteLength; ) {
+        const packetLength = new DataView(chunk.slice(i, i + 2)).getUint16(0)
+        const packet = chunk.slice(i + 2, i + 2 + packetLength)
+        index += 2 + packetLength
+        controller.enqueue(packet)
+      }
+    }
+  })
 
-    log(`connected to ${dnsServer}:${dnsPort}`)
-    const writer = tcpSocket.writable.getWriter()
-    await writer.write(udpChunk)
-    writer.releaseLock()
-    await tcpSocket.readable.pipeTo(
+  transformStream.readable
+    .pipeTo(
       new WritableStream({
+        /**@param {ArrayBuffer} chunk  */
         async write(chunk) {
+          const res = await fetch('https://1.1.1.1/dns-query', {
+            method: 'POST',
+            headers: { 'content-type': 'application/dns-message' },
+            body: chunk
+          })
+
+          const result = await res.arrayBuffer()
+          const size = result.byteLength
           if (webSocket.readyState === WS_READY_STATE_OPEN) {
-            if (vlessHeader) {
-              webSocket.send(new Uint8Array([...vlessHeader, ...chunk]))
-              vlessHeader = null
-            } else {
-              webSocket.send(chunk)
-            }
+            log(`doh success and dns message length is ${udpSize}`)
+            webSocket.send(
+              new Uint8Array([...vlessResponseHeader, ...UDPBuffer])
+            )
           }
-        },
-        close() {
-          log(`dns server(${dnsServer}) tcp is close`)
-        },
-        abort(reason) {
-          console.error(`dns server(${dnsServer}) tcp is abort`, reason)
         }
       })
     )
-  } catch (error) {
-    console.error(`handleDNSQuery have exception, error: ${error.message}`)
+    .catch((error) => {
+      log('dns udp has error' + error)
+    })
+
+  const writer = transformStream.writable.getWriter()
+  return {
+    /**@param {ArrayBuffer} chunk*/
+    write(chunk) {
+      writer.write(chunk)
+    }
   }
 }
 
 /**
- *
  * @param {number} addressType
  * @param {string} addressRemote
  * @param {number} portRemote
